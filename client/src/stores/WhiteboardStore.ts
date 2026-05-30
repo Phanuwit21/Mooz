@@ -26,10 +26,10 @@ export const whiteboardSlice = createSlice({
       state.whiteboardDialogOpen = true
       state.whiteboardId = action.payload
       const game = phaserGame.scene.keys.game as Game
-      const whiteboard = game.network?.room?.state?.whiteboards?.get(action.payload)
+      const roomId = game.network?.getWhiteboardRoomId(action.payload)
       const playerName = game.myPlayer?.playerName?.text
-      if (whiteboard?.roomId) {
-        state.whiteboardUrl = buildWhiteboardUrl(whiteboard.roomId, playerName)
+      if (roomId) {
+        state.whiteboardUrl = buildWhiteboardUrl(roomId, playerName)
       } else {
         state.whiteboardUrl = state.urls.get(action.payload) ?? null
       }

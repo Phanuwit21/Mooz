@@ -303,7 +303,7 @@ export default class Network {
     })
   }
 
-  private watchRetryTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  private watchRetryTimers = new Map<string, number>()
 
   requestWatchScreenShare(sharerSessionId: string) {
     this.room?.send(Message.REQUEST_WATCH_SCREEN_SHARE, { targetId: sharerSessionId })
@@ -492,6 +492,18 @@ export default class Network {
 
   disconnectFromComputer(id: string) {
     this.room?.send(Message.DISCONNECT_FROM_COMPUTER, { computerId: id })
+  }
+
+  getWhiteboardRoomId(whiteboardId: string): string | null {
+    return this.room?.state.whiteboards.get(whiteboardId)?.roomId ?? null
+  }
+
+  getWhiteboardConnectedUserIds(whiteboardId: string): string[] {
+    const whiteboard = this.room?.state.whiteboards.get(whiteboardId)
+    if (!whiteboard) return []
+    const ids: string[] = []
+    whiteboard.connectedUser.forEach((id) => ids.push(id))
+    return ids
   }
 
   connectToWhiteboard(id: string) {

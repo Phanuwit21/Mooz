@@ -3,6 +3,12 @@ import Game from '../scenes/Game'
 import store from '../stores'
 import { sanitizeId } from '../util'
 
+export interface WhiteboardOccupant {
+  id: string
+  name: string
+  isSelf: boolean
+}
+
 /** Build WBO embed URL. Public WBO assigns random in-board names; we pass skyName for our UI. */
 export function buildWhiteboardUrl(roomId: string, playerName?: string) {
   const base = `https://wbo.ophir.dev/boards/sky-office-${roomId}`
@@ -14,18 +20,20 @@ export function buildWhiteboardUrl(roomId: string, playerName?: string) {
   return `${base}?${params.toString()}`
 }
 
-export function getWhiteboardOccupants(whiteboardId: string | null | undefined) {
+export function getWhiteboardOccupants(
+  whiteboardId: string | null | undefined
+): WhiteboardOccupant[] {
   if (!whiteboardId) return []
 
   const game = phaserGame.scene.keys.game as Game | undefined
-  const whiteboard = game?.network?.room?.state?.whiteboards?.get(whiteboardId)
-  if (!whiteboard) return []
+  const network = game?.network
+  if (!network) return []
 
   const sessionId = store.getState().user.sessionId
   const participants = store.getState().participants.participants
   const nameMap = store.getState().user.playerNameMap
 
-  return Array.from(whiteboard.connectedUser).map((id) => ({
+  return network.getWhiteboardConnectedUserIds(whiteboardId).map((id) => ({
     id,
     name: participants.get(id)?.name ?? nameMap.get(sanitizeId(id)) ?? 'Guest',
     isSelf: id === sessionId,

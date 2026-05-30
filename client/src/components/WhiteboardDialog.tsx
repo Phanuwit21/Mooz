@@ -5,7 +5,7 @@ import CloseIcon from '@mui/icons-material/Close'
 
 import { useAppDispatch, useAppSelector } from '../hooks'
 import { closeWhiteboardDialog } from '../stores/WhiteboardStore'
-import { getWhiteboardOccupants } from '../util/whiteboard'
+import { getWhiteboardOccupants, WhiteboardOccupant } from '../util/whiteboard'
 
 const Backdrop = styled.div`
   position: fixed;
@@ -101,7 +101,9 @@ export default function WhiteboardDialog() {
   const whiteboardId = useAppSelector((state) => state.whiteboard.whiteboardId)
   const participants = useAppSelector((state) => state.participants.participants)
   const dispatch = useAppDispatch()
-  const [occupants, setOccupants] = useState(() => getWhiteboardOccupants(whiteboardId))
+  const [occupants, setOccupants] = useState<WhiteboardOccupant[]>(() =>
+    getWhiteboardOccupants(whiteboardId)
+  )
 
   useEffect(() => {
     const refresh = () => setOccupants(getWhiteboardOccupants(whiteboardId))
