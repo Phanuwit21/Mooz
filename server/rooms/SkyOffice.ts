@@ -39,13 +39,12 @@ export class SkyOffice extends Room<OfficeState> {
 
     this.setState(new OfficeState())
 
-    // HARD-CODED: Add 5 computers in a room
-    for (let i = 0; i < 5; i++) {
+    // One slot per computer / whiteboard cluster on the map
+    for (let i = 0; i < 11; i++) {
       this.state.computers.set(String(i), new Computer())
     }
 
-    // HARD-CODED: Add 3 whiteboards in a room
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 2; i++) {
       this.state.whiteboards.set(String(i), new Whiteboard())
     }
 
@@ -117,6 +116,63 @@ export class SkyOffice extends Room<OfficeState> {
       })
     })
 
+    this.onMessage(Message.UPDATE_PRESENCE, (client, message: { presence: string }) => {
+      const player = this.state.players.get(client.sessionId)
+      if (player && (message.presence === 'online' || message.presence === 'afk')) {
+        player.presence = message.presence
+      }
+    })
+
+    this.onMessage(
+      Message.UPDATE_PLAYER_AREA,
+      (client, message: { areaId: string; areaName: string }) => {
+        const player = this.state.players.get(client.sessionId)
+        if (!player) return
+        player.areaId = message.areaId ?? ''
+        player.areaName = message.areaName ?? ''
+      }
+    )
+
+    this.onMessage(
+      Message.CLAIM_DESK,
+      (client, message: { deskId: string; deskName: string }) => {
+        const player = this.state.players.get(client.sessionId)
+        if (!player) return
+
+        this.state.players.forEach((p, id) => {
+          if (p.deskId === message.deskId && id !== client.sessionId) {
+            p.deskId = ''
+            p.deskName = ''
+          }
+        })
+
+        player.deskId = message.deskId
+        player.deskName = message.deskName
+      }
+    )
+
+    this.onMessage(Message.RELEASE_DESK, (client) => {
+      const player = this.state.players.get(client.sessionId)
+      if (!player) return
+      player.deskId = ''
+      player.deskName = ''
+    })
+
+    this.onMessage(Message.SET_HAND_RAISED, (client, message: { raised: boolean }) => {
+      const player = this.state.players.get(client.sessionId)
+      if (player) player.handRaised = message.raised
+    })
+
+    this.onMessage(Message.SET_SCREEN_SHARING, (client, message: { sharing: boolean }) => {
+      const player = this.state.players.get(client.sessionId)
+      if (player) player.screenSharing = message.sharing
+    })
+
+    this.onMessage(Message.SET_IN_MEETING, (client, message: { inMeeting: boolean }) => {
+      const player = this.state.players.get(client.sessionId)
+      if (player) player.inMeeting = message.inMeeting
+    })
+
     // when a player is ready to connect, call the PlayerReadyToConnectCommand
     this.onMessage(Message.READY_TO_CONNECT, (client) => {
       const player = this.state.players.get(client.sessionId)
@@ -129,6 +185,15 @@ export class SkyOffice extends Room<OfficeState> {
       if (player) player.videoConnected = true
     })
 
+    this.onMessage(
+      Message.REQUEST_WATCH_SCREEN_SHARE,
+      (client, message: { targetId: string }) => {
+        const sharer = this.clients.find((c) => c.sessionId === message.targetId)
+        if (!sharer) return
+        sharer.send(Message.WATCH_SCREEN_SHARE, { viewerId: client.sessionId })
+      }
+    )
+
     // when a player disconnect a stream, broadcast the signal to the other player connected to the stream
     this.onMessage(Message.DISCONNECT_STREAM, (client, message: { clientId: string }) => {
       this.clients.forEach((cli) => {
@@ -140,19 +205,43 @@ export class SkyOffice extends Room<OfficeState> {
 
     // when a player send a chat message, update the message array and broadcast to all connected clients except the sender
     this.onMessage(Message.ADD_CHAT_MESSAGE, (client, message: { content: string }) => {
-      // update the message array (so that players join later can also see the message)
       this.dispatcher.dispatch(new ChatMessageUpdateCommand(), {
         client,
         content: message.content,
+        recipientId: '',
       })
 
-      // broadcast to all currently connected clients except the sender (to render in-game dialog on top of the character)
       this.broadcast(
         Message.ADD_CHAT_MESSAGE,
         { clientId: client.sessionId, content: message.content },
         { except: client }
       )
     })
+
+    this.onMessage(
+      Message.ADD_DM_MESSAGE,
+      (client, message: { content: string; recipientId: string }) => {
+        const player = this.state.players.get(client.sessionId)
+        const recipient = this.clients.find((c) => c.sessionId === message.recipientId)
+        if (!player?.name || !recipient) return
+
+        const payload = {
+          authorId: client.sessionId,
+          author: player.name,
+          recipientId: message.recipientId,
+          content: message.content,
+          createdAt: Date.now(),
+        }
+
+        client.send(Message.ADD_DM_MESSAGE, payload)
+        recipient.send(Message.ADD_DM_MESSAGE, payload)
+
+        recipient.send(Message.ADD_CHAT_MESSAGE, {
+          clientId: client.sessionId,
+          content: message.content,
+        })
+      }
+    )
   }
 
   async onAuth(client: Client, options: { password: string | null }) {

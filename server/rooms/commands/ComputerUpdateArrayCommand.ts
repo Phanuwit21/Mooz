@@ -21,10 +21,9 @@ export class ComputerAddUserCommand extends Command<IOfficeState, Payload> {
 export class ComputerRemoveUserCommand extends Command<IOfficeState, Payload> {
   execute(data: Payload) {
     const { client, computerId } = data
-    const computer = this.state.computers.get(computerId)
+    const computer = this.room.state.computers.get(computerId)
 
-    if (computer.connectedUser.has(client.sessionId)) {
-      computer.connectedUser.delete(client.sessionId)
-    }
+    if (!computer || !computer.connectedUser.has(client.sessionId)) return
+    computer.connectedUser.delete(client.sessionId)
   }
 }

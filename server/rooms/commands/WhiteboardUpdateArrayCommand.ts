@@ -21,10 +21,9 @@ export class WhiteboardAddUserCommand extends Command<IOfficeState, Payload> {
 export class WhiteboardRemoveUserCommand extends Command<IOfficeState, Payload> {
   execute(data: Payload) {
     const { client, whiteboardId } = data
-    const whiteboard = this.state.whiteboards.get(whiteboardId)
+    const whiteboard = this.room.state.whiteboards.get(whiteboardId)
 
-    if (whiteboard.connectedUser.has(client.sessionId)) {
-      whiteboard.connectedUser.delete(client.sessionId)
-    }
+    if (!whiteboard || !whiteboard.connectedUser.has(client.sessionId)) return
+    whiteboard.connectedUser.delete(client.sessionId)
   }
 }

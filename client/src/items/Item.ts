@@ -6,6 +6,10 @@ export default class Item extends Phaser.Physics.Arcade.Sprite {
   private statusBox!: Phaser.GameObjects.Container
   itemType!: ItemType
 
+  onOverlapDialog() {
+    // overridden by interactable items
+  }
+
   constructor(scene: Phaser.Scene, x: number, y: number, texture: string, frame?: string | number) {
     super(scene, x, y, texture, frame)
 
@@ -16,17 +20,19 @@ export default class Item extends Phaser.Physics.Arcade.Sprite {
 
   // add texts into dialog box container
   setDialogBox(text: string) {
+    this.clearDialogBox()
+    this.dialogBox.setPosition(this.x, this.y)
+
     const innerText = this.scene.add
       .text(0, 0, text)
       .setFontFamily('Arial')
       .setFontSize(12)
       .setColor('#000000')
 
-    // set dialogBox slightly larger than the text in it
     const dialogBoxWidth = innerText.width + 4
     const dialogBoxHeight = innerText.height + 2
-    const dialogBoxX = this.x - dialogBoxWidth * 0.5
-    const dialogBoxY = this.y + this.height * 0.5
+    const dialogBoxX = -dialogBoxWidth * 0.5
+    const dialogBoxY = this.height * 0.5
 
     this.dialogBox.add(
       this.scene.add
@@ -46,17 +52,19 @@ export default class Item extends Phaser.Physics.Arcade.Sprite {
 
   // add text into status box container
   setStatusBox(text: string) {
+    this.clearStatusBox()
+    this.statusBox.setPosition(this.x, this.y)
+
     const innerText = this.scene.add
       .text(0, 0, text)
       .setFontFamily('Arial')
       .setFontSize(12)
       .setColor('#000000')
 
-    // set dialogBox slightly larger than the text in it
     const statusBoxWidth = innerText.width + 4
     const statusBoxHeight = innerText.height + 2
-    const statusBoxX = this.x - statusBoxWidth * 0.5
-    const statusBoxY = this.y - this.height * 0.25
+    const statusBoxX = -statusBoxWidth * 0.5
+    const statusBoxY = -this.height * 0.25
     this.statusBox.add(
       this.scene.add
         .graphics()

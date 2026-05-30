@@ -2,12 +2,19 @@ import Peer from 'peerjs'
 import Network from '../services/Network'
 import store from '../stores'
 import { setVideoConnected } from '../stores/UserStore'
+import { sanitizeId } from '../util'
+
+type VideoEntry = {
+  call: Peer.MediaConnection
+  wrapper: HTMLDivElement
+}
 
 export default class WebRTC {
   private myPeer: Peer
-  private peers = new Map<string, { call: Peer.MediaConnection; video: HTMLVideoElement }>()
-  private onCalledPeers = new Map<string, { call: Peer.MediaConnection; video: HTMLVideoElement }>()
-  private videoGrid = document.querySelector('.video-grid')
+  private peers = new Map<string, VideoEntry>()
+  private onCalledPeers = new Map<string, VideoEntry>()
+  private peersRow = document.querySelector('.video-peers-row')
+  private localPip = document.querySelector('.video-local-pip')
   private buttonGrid = document.querySelector('.button-grid')
   private myVideo = document.createElement('video')
   private myStream?: MediaStream
@@ -17,42 +24,36 @@ export default class WebRTC {
     const sanitizedId = this.replaceInvalidId(userId)
     this.myPeer = new Peer(sanitizedId)
     this.network = network
-    console.log('userId:', userId)
-    console.log('sanitizedId:', sanitizedId)
     this.myPeer.on('error', (err) => {
-      console.log(err.type)
       console.error(err)
     })
 
-    // mute your own video stream (you don't want to hear yourself)
     this.myVideo.muted = true
-
-    // config peerJS
     this.initialize()
   }
 
-  // PeerJS throws invalid_id error if it contains some characters such as that colyseus generates.
-  // https://peerjs.com/docs.html#peer-id
   private replaceInvalidId(userId: string) {
-    return userId.replace(/[^0-9a-z]/gi, 'G')
+    return sanitizeId(userId)
+  }
+
+  private getDisplayName(peerId: string) {
+    return store.getState().user.playerNameMap.get(peerId) || 'Guest'
   }
 
   initialize() {
     this.myPeer.on('call', (call) => {
       if (!this.onCalledPeers.has(call.peer)) {
         call.answer(this.myStream)
-        const video = document.createElement('video')
-        this.onCalledPeers.set(call.peer, { call, video })
+        const { wrapper } = this.createVideoCard(call.peer, this.getDisplayName(call.peer))
+        this.onCalledPeers.set(call.peer, { call, wrapper })
 
         call.on('stream', (userVideoStream) => {
-          this.addVideoStream(video, userVideoStream)
+          this.attachStream(wrapper, userVideoStream)
         })
       }
-      // on close is triggered manually with deleteOnCalledVideoStream()
     })
   }
 
-  // check if permission has been granted before
   checkPreviousPermission() {
     const permissionName = 'microphone' as PermissionName
     navigator.permissions?.query({ name: permissionName }).then((result) => {
@@ -61,7 +62,6 @@ export default class WebRTC {
   }
 
   getUserMedia(alertOnError = true) {
-    // ask the browser to get user media
     navigator.mediaDevices
       ?.getUserMedia({
         video: true,
@@ -69,98 +69,118 @@ export default class WebRTC {
       })
       .then((stream) => {
         this.myStream = stream
-        this.addVideoStream(this.myVideo, this.myStream)
+        const myId = sanitizeId(this.network.mySessionId)
+        const { wrapper } = this.createVideoCard(myId, 'You', true)
+        this.attachStream(wrapper, this.myStream)
         this.setUpButtons()
         store.dispatch(setVideoConnected(true))
         this.network.videoConnected()
       })
-      .catch((error) => {
+      .catch(() => {
         if (alertOnError) window.alert('No webcam or microphone found, or permission is blocked')
       })
   }
 
-  // method to call a peer
   connectToNewUser(userId: string) {
-    if (this.myStream) {
-      const sanitizedId = this.replaceInvalidId(userId)
-      if (!this.peers.has(sanitizedId)) {
-        console.log('calling', sanitizedId)
-        const call = this.myPeer.call(sanitizedId, this.myStream)
-        const video = document.createElement('video')
-        this.peers.set(sanitizedId, { call, video })
+    if (!this.myStream) return
 
-        call.on('stream', (userVideoStream) => {
-          this.addVideoStream(video, userVideoStream)
-        })
+    const sanitizedId = this.replaceInvalidId(userId)
+    if (this.peers.has(sanitizedId)) return
 
-        // on close is triggered manually with deleteVideoStream()
-      }
-    }
+    const call = this.myPeer.call(sanitizedId, this.myStream)
+    const { wrapper } = this.createVideoCard(sanitizedId, this.getDisplayName(sanitizedId))
+    this.peers.set(sanitizedId, { call, wrapper })
+
+    call.on('stream', (userVideoStream) => {
+      this.attachStream(wrapper, userVideoStream)
+    })
   }
 
-  // method to add new video stream to videoGrid div
-  addVideoStream(video: HTMLVideoElement, stream: MediaStream) {
-    video.srcObject = stream
+  private createVideoCard(peerId: string, displayName: string, local = false) {
+    const wrapper = document.createElement('div')
+    wrapper.className = local ? 'video-card video-card--local' : 'video-card video-card--peer'
+    wrapper.dataset.peerId = peerId
+
+    const video = document.createElement('video')
     video.playsInline = true
+    video.muted = local
+
+    const label = document.createElement('div')
+    label.className = 'video-card__label'
+    label.textContent = displayName
+
+    wrapper.appendChild(video)
+    wrapper.appendChild(label)
+
+    const container = local ? this.localPip : this.peersRow
+    container?.appendChild(wrapper)
+
+    return { wrapper, video }
+  }
+
+  private attachStream(wrapper: HTMLDivElement, stream: MediaStream) {
+    const video = wrapper.querySelector('video')
+    if (!video) return
+
+    video.srcObject = stream
     video.addEventListener('loadedmetadata', () => {
       video.play()
     })
-    if (this.videoGrid) this.videoGrid.append(video)
   }
 
-  // method to remove video stream (when we are the host of the call)
   deleteVideoStream(userId: string) {
     const sanitizedId = this.replaceInvalidId(userId)
-    if (this.peers.has(sanitizedId)) {
-      const peer = this.peers.get(sanitizedId)
-      peer?.call.close()
-      peer?.video.remove()
-      this.peers.delete(sanitizedId)
-    }
+    const peer = this.peers.get(sanitizedId)
+    if (!peer) return
+    peer.call.close()
+    peer.wrapper.remove()
+    this.peers.delete(sanitizedId)
   }
 
-  // method to remove video stream (when we are the guest of the call)
   deleteOnCalledVideoStream(userId: string) {
     const sanitizedId = this.replaceInvalidId(userId)
-    if (this.onCalledPeers.has(sanitizedId)) {
-      const onCalledPeer = this.onCalledPeers.get(sanitizedId)
-      onCalledPeer?.call.close()
-      onCalledPeer?.video.remove()
-      this.onCalledPeers.delete(sanitizedId)
-    }
+    const onCalledPeer = this.onCalledPeers.get(sanitizedId)
+    if (!onCalledPeer) return
+    onCalledPeer.call.close()
+    onCalledPeer.wrapper.remove()
+    this.onCalledPeers.delete(sanitizedId)
   }
 
-  // method to set up mute/unmute and video on/off buttons
+  setPeerVolume(userId: string, volume: number) {
+    const sanitizedId = this.replaceInvalidId(userId)
+    const entry = this.peers.get(sanitizedId) ?? this.onCalledPeers.get(sanitizedId)
+    if (!entry) return
+
+    const clamped = Math.max(0, Math.min(1, volume))
+    const video = entry.wrapper.querySelector('video')
+    if (video) {
+      video.volume = clamped
+    }
+    entry.wrapper.style.opacity = String(0.25 + 0.75 * clamped)
+  }
+
+  isAudioEnabled(): boolean {
+    return this.myStream?.getAudioTracks()[0]?.enabled ?? false
+  }
+
+  isVideoEnabled(): boolean {
+    return this.myStream?.getVideoTracks()[0]?.enabled ?? false
+  }
+
+  toggleAudio(): void {
+    const track = this.myStream?.getAudioTracks()[0]
+    if (!track) return
+    track.enabled = !track.enabled
+  }
+
+  toggleVideo(): void {
+    const track = this.myStream?.getVideoTracks()[0]
+    if (!track) return
+    track.enabled = !track.enabled
+  }
+
+  /** Media UI is React MediaControlBar — clear legacy DOM slot. */
   setUpButtons() {
-    const audioButton = document.createElement('button')
-    audioButton.innerText = 'Mute'
-    audioButton.addEventListener('click', () => {
-      if (this.myStream) {
-        const audioTrack = this.myStream.getAudioTracks()[0]
-        if (audioTrack.enabled) {
-          audioTrack.enabled = false
-          audioButton.innerText = 'Unmute'
-        } else {
-          audioTrack.enabled = true
-          audioButton.innerText = 'Mute'
-        }
-      }
-    })
-    const videoButton = document.createElement('button')
-    videoButton.innerText = 'Video off'
-    videoButton.addEventListener('click', () => {
-      if (this.myStream) {
-        const audioTrack = this.myStream.getVideoTracks()[0]
-        if (audioTrack.enabled) {
-          audioTrack.enabled = false
-          videoButton.innerText = 'Video on'
-        } else {
-          audioTrack.enabled = true
-          videoButton.innerText = 'Video off'
-        }
-      }
-    })
-    this.buttonGrid?.append(audioButton)
-    this.buttonGrid?.append(videoButton)
+    if (this.buttonGrid) this.buttonGrid.replaceChildren()
   }
 }

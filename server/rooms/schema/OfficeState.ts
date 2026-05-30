@@ -14,6 +14,14 @@ export class Player extends Schema implements IPlayer {
   @type('string') anim = 'adam_idle_down'
   @type('boolean') readyToConnect = false
   @type('boolean') videoConnected = false
+  @type('string') presence = 'online'
+  @type('string') areaId = ''
+  @type('string') areaName = ''
+  @type('string') deskId = ''
+  @type('string') deskName = ''
+  @type('boolean') handRaised = false
+  @type('boolean') screenSharing = false
+  @type('boolean') inMeeting = false
 }
 
 export class Computer extends Schema implements IComputer {
@@ -27,6 +35,8 @@ export class Whiteboard extends Schema implements IWhiteboard {
 
 export class ChatMessage extends Schema implements IChatMessage {
   @type('string') author = ''
+  @type('string') authorId = ''
+  @type('string') recipientId = ''
   @type('number') createdAt = new Date().getTime()
   @type('string') content = ''
 }

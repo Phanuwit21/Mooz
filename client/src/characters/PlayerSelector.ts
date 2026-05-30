@@ -1,6 +1,5 @@
 import Phaser from 'phaser'
 import MyPlayer from './MyPlayer'
-import { PlayerBehavior } from '../../../types/PlayerBehavior'
 import Item from '../items/Item'
 import { NavKeys } from '../../../types/KeyboardState'
 export default class PlayerSelector extends Phaser.GameObjects.Zone {
@@ -10,47 +9,58 @@ export default class PlayerSelector extends Phaser.GameObjects.Zone {
     super(scene, x, y, width, height)
 
     scene.physics.add.existing(this)
+    this.setOrigin(0.5, 0.5)
   }
 
   update(player: MyPlayer, cursors: NavKeys) {
-    if (!cursors) {
-      return
-    }
-
-    // no need to update player selection while sitting
-    if (player.playerBehavior === PlayerBehavior.SITTING) {
-      return
-    }
-
-    // update player selection box position so that it's always in front of the player
     const { x, y } = player
+    let dx = 0
+    let dy = 32
+
     let joystickLeft = false
     let joystickRight = false
     let joystickUp = false
     let joystickDown = false
     if (player.joystickMovement?.isMoving) {
-      joystickLeft = player.joystickMovement?.direction.left
-      joystickRight = player.joystickMovement?.direction.right
-      joystickUp = player.joystickMovement?.direction.up
-      joystickDown = player.joystickMovement?.direction.down
-    }
-    if (cursors.left?.isDown || cursors.A?.isDown || joystickLeft) {
-      this.setPosition(x - 32, y)
-    } else if (cursors.right?.isDown || cursors.D?.isDown || joystickRight) {
-      this.setPosition(x + 32, y)
-    } else if (cursors.up?.isDown || cursors.W?.isDown || joystickUp) {
-      this.setPosition(x, y - 32)
-    } else if (cursors.down?.isDown || cursors.S?.isDown || joystickDown) {
-      this.setPosition(x, y + 32)
+      joystickLeft = player.joystickMovement.direction.left
+      joystickRight = player.joystickMovement.direction.right
+      joystickUp = player.joystickMovement.direction.up
+      joystickDown = player.joystickMovement.direction.down
     }
 
-    // while currently selecting an item,
-    // if the selector and selection item stop overlapping, clear the dialog box and selected item
-    if (this.selectedItem) {
-      if (!this.scene.physics.overlap(this, this.selectedItem)) {
-        this.selectedItem.clearDialogBox()
-        this.selectedItem = undefined
+    if (cursors) {
+      if (cursors.left?.isDown || cursors.A?.isDown || joystickLeft) {
+        dx = -32
+        dy = 0
+      } else if (cursors.right?.isDown || cursors.D?.isDown || joystickRight) {
+        dx = 32
+        dy = 0
+      } else if (cursors.up?.isDown || cursors.W?.isDown || joystickUp) {
+        dx = 0
+        dy = -32
+      } else if (cursors.down?.isDown || cursors.S?.isDown || joystickDown) {
+        dx = 0
+        dy = 32
+      } else {
+        const facing = this.offsetFromFacingAnim(player)
+        dx = facing.dx
+        dy = facing.dy
       }
+    } else {
+      const facing = this.offsetFromFacingAnim(player)
+      dx = facing.dx
+      dy = facing.dy
     }
+
+    this.setPosition(x + dx, y + dy)
+  }
+
+  /** Tile in front of the player from current idle/walk animation. */
+  private offsetFromFacingAnim(player: MyPlayer) {
+    const key = player.anims.currentAnim?.key ?? 'idle_down'
+    if (key.includes('left')) return { dx: -32, dy: 0 }
+    if (key.includes('right')) return { dx: 32, dy: 0 }
+    if (key.includes('up')) return { dx: 0, dy: -32 }
+    return { dx: 0, dy: 32 }
   }
 }

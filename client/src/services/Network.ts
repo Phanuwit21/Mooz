@@ -4,11 +4,15 @@ import { Message } from '../../../types/Messages'
 import { IRoomData, RoomType } from '../../../types/Rooms'
 import { ItemType } from '../../../types/Items'
 import WebRTC from '../web/WebRTC'
+import ProximityShareManager from '../web/ProximityShareManager'
+import PresenceManager from './PresenceManager'
+import { PlayerPresence } from '../../../types/PlayerPresence'
 import { phaserEvents, Event } from '../events/EventCenter'
 import store from '../stores'
 import { setSessionId, setPlayerNameMap, removePlayerNameMap } from '../stores/UserStore'
 import {
   setLobbyJoined,
+  setLobbyError,
   setJoinedRoomData,
   setAvailableRooms,
   addAvailableRooms,
@@ -16,9 +20,16 @@ import {
 } from '../stores/RoomStore'
 import {
   pushChatMessage,
+  pushDmMessage,
   pushPlayerJoinedMessage,
   pushPlayerLeftMessage,
 } from '../stores/ChatStore'
+import {
+  upsertParticipant,
+  removeParticipant,
+  clearParticipants,
+  participantFromServer,
+} from '../stores/ParticipantStore'
 import { setWhiteboardUrls } from '../stores/WhiteboardStore'
 
 export default class Network {
@@ -26,6 +37,8 @@ export default class Network {
   private room?: Room<IOfficeState>
   private lobby!: Room
   webRTC?: WebRTC
+  proximityShare?: ProximityShareManager
+  private presenceManager?: PresenceManager
 
   mySessionId!: string
 
@@ -36,13 +49,37 @@ export default class Network {
         ? import.meta.env.VITE_SERVER_URL
         : `${protocol}//${window.location.hostname}:2567`
     this.client = new Client(endpoint)
-    this.joinLobbyRoom().then(() => {
-      store.dispatch(setLobbyJoined(true))
-    })
+    this.connectLobbyWithRetry()
 
     phaserEvents.on(Event.MY_PLAYER_NAME_CHANGE, this.updatePlayerName, this)
     phaserEvents.on(Event.MY_PLAYER_TEXTURE_CHANGE, this.updatePlayer, this)
     phaserEvents.on(Event.PLAYER_DISCONNECTED, this.playerStreamDisconnect, this)
+  }
+
+  private async connectLobbyWithRetry(attempt = 0) {
+    const maxAttempts = 8
+    const delayMs = Math.min(1000 * 2 ** attempt, 8000)
+
+    try {
+      await this.joinLobbyRoom()
+      store.dispatch(setLobbyJoined(true))
+    } catch (err) {
+      console.error('Lobby connection failed:', err)
+      if (attempt + 1 >= maxAttempts) {
+        store.dispatch(
+          setLobbyError(
+            'Cannot reach game server. Open a terminal in the project folder and run: yarn start'
+          )
+        )
+        return
+      }
+      window.setTimeout(() => this.connectLobbyWithRetry(attempt + 1), delayMs)
+    }
+  }
+
+  async retryLobbyConnection() {
+    store.dispatch(setLobbyError(''))
+    await this.connectLobbyWithRetry()
   }
 
   /**
@@ -97,24 +134,76 @@ export default class Network {
     this.mySessionId = this.room.sessionId
     store.dispatch(setSessionId(this.room.sessionId))
     this.webRTC = new WebRTC(this.mySessionId, this)
+    this.proximityShare = new ProximityShareManager(this.mySessionId)
+    this.presenceManager = new PresenceManager(this)
+    store.dispatch(clearParticipants())
 
-    // new instance added to the players MapSchema
-    this.room.state.players.onAdd = (player: IPlayer, key: string) => {
+    const syncParticipant = (key: string, player: IPlayer) => {
+      if (!player.name) return
+      store.dispatch(
+        upsertParticipant(
+          participantFromServer(
+            key,
+            player.name,
+            player.presence,
+            player.areaId,
+            player.areaName,
+            player.deskId,
+            player.deskName,
+            player.handRaised,
+            player.screenSharing,
+            player.inMeeting
+          )
+        )
+      )
+    }
+
+    const registerRemotePlayer = (player: IPlayer, key: string) => {
       if (key === this.mySessionId) return
 
-      // track changes on every child object inside the players MapSchema
       player.onChange = (changes) => {
         changes.forEach((change) => {
           const { field, value } = change
           phaserEvents.emit(Event.PLAYER_UPDATED, field, value, key)
 
-          // when a new player finished setting up player name
           if (field === 'name' && value !== '') {
+            const hadName = store.getState().user.playerNameMap.has(key)
+            store.dispatch(setPlayerNameMap({ id: key, name: value as string }))
+            syncParticipant(key, player)
             phaserEvents.emit(Event.PLAYER_JOINED, player, key)
-            store.dispatch(setPlayerNameMap({ id: key, name: value }))
-            store.dispatch(pushPlayerJoinedMessage(value))
+            if (!hadName) {
+              store.dispatch(pushPlayerJoinedMessage(value as string))
+            }
+          } else if (
+            field === 'presence' ||
+            field === 'areaId' ||
+            field === 'areaName' ||
+            field === 'deskId' ||
+            field === 'deskName' ||
+            field === 'handRaised' ||
+            field === 'screenSharing' ||
+            field === 'inMeeting'
+          ) {
+            syncParticipant(key, player)
           }
         })
+      }
+
+      if (player.name) {
+        syncParticipant(key, player)
+        store.dispatch(setPlayerNameMap({ id: key, name: player.name }))
+      }
+    }
+
+    this.room.state.players.forEach((player, key) => {
+      registerRemotePlayer(player, key)
+    })
+
+    this.room.state.players.onAdd = (player: IPlayer, key: string) => {
+      registerRemotePlayer(player, key)
+      if (player.name) {
+        phaserEvents.emit(Event.PLAYER_JOINED, player, key)
+        store.dispatch(pushPlayerJoinedMessage(player.name))
       }
     }
 
@@ -125,6 +214,7 @@ export default class Network {
       this.webRTC?.deleteOnCalledVideoStream(key)
       store.dispatch(pushPlayerLeftMessage(player.name))
       store.dispatch(removePlayerNameMap(key))
+      store.dispatch(removeParticipant(key))
     }
 
     // new instance added to the computers MapSchema
@@ -155,10 +245,25 @@ export default class Network {
       }
     }
 
-    // new instance added to the chatMessages ArraySchema
-    this.room.state.chatMessages.onAdd = (item, index) => {
-      store.dispatch(pushChatMessage(item))
+    // new instance added to the chatMessages ArraySchema (public only)
+    this.room.state.chatMessages.onAdd = (item) => {
+      if (!item.recipientId) {
+        store.dispatch(pushChatMessage(item))
+      }
     }
+
+    this.room.onMessage(
+      Message.ADD_DM_MESSAGE,
+      (payload: {
+        authorId: string
+        author: string
+        recipientId: string
+        content: string
+        createdAt: number
+      }) => {
+        store.dispatch(pushDmMessage(payload))
+      }
+    )
 
     // when the server sends room data
     this.room.onMessage(Message.SEND_ROOM_DATA, (content) => {
@@ -180,6 +285,52 @@ export default class Network {
       const computerState = store.getState().computer
       computerState.shareScreenManager?.onUserLeft(clientId)
     })
+
+    this.room.onMessage(
+      Message.WATCH_SCREEN_SHARE,
+      (payload: { viewerId: string }) => {
+        this.proximityShare?.shareToViewer(payload.viewerId)
+      }
+    )
+  }
+
+  /** Spawn Phaser avatars for everyone already in the room (call after Game scene is ready). */
+  syncPlayersToScene() {
+    if (!this.room) return
+    this.room.state.players.forEach((player, key) => {
+      if (key === this.mySessionId || !player.name) return
+      phaserEvents.emit(Event.PLAYER_JOINED, player, key)
+    })
+  }
+
+  private watchRetryTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+  requestWatchScreenShare(sharerSessionId: string) {
+    this.room?.send(Message.REQUEST_WATCH_SCREEN_SHARE, { targetId: sharerSessionId })
+  }
+
+  startWatchScreenShareRetry(sharerSessionId: string) {
+    this.stopWatchScreenShareRetry(sharerSessionId)
+    let attempts = 0
+
+    const tick = () => {
+      attempts++
+      this.requestWatchScreenShare(sharerSessionId)
+      if (attempts < 8) {
+        const timer = window.setTimeout(tick, 1500)
+        this.watchRetryTimers.set(sharerSessionId, timer)
+      }
+    }
+
+    tick()
+  }
+
+  stopWatchScreenShareRetry(sharerSessionId: string) {
+    const timer = this.watchRetryTimers.get(sharerSessionId)
+    if (timer) {
+      window.clearTimeout(timer)
+      this.watchRetryTimers.delete(sharerSessionId)
+    }
   }
 
   // method to register event listener and call back function when a item user added
@@ -241,6 +392,82 @@ export default class Network {
     this.room?.send(Message.UPDATE_PLAYER_NAME, { name: currentName })
   }
 
+  updatePresence(presence: PlayerPresence) {
+    this.room?.send(Message.UPDATE_PRESENCE, { presence })
+  }
+
+  updatePlayerArea(areaId: string, areaName: string) {
+    this.room?.send(Message.UPDATE_PLAYER_AREA, { areaId, areaName })
+    const me = this.room?.state.players.get(this.mySessionId)
+    if (me?.name) {
+      store.dispatch(
+        upsertParticipant(
+          participantFromServer(
+            this.mySessionId,
+            me.name,
+            me.presence,
+            areaId,
+            areaName,
+            me.deskId,
+            me.deskName,
+            me.handRaised,
+            me.screenSharing,
+            me.inMeeting
+          )
+        )
+      )
+    }
+  }
+
+  syncMyParticipant(
+    name: string,
+    presence: string,
+    areaId: string,
+    areaName: string,
+    deskId = '',
+    deskName = '',
+    handRaised = false,
+    screenSharing = false,
+    inMeeting = false
+  ) {
+    store.dispatch(
+      upsertParticipant(
+        participantFromServer(
+          this.mySessionId,
+          name,
+          presence,
+          areaId,
+          areaName,
+          deskId,
+          deskName,
+          handRaised,
+          screenSharing,
+          inMeeting
+        )
+      )
+    )
+  }
+
+  claimDesk(deskId: string, deskName: string) {
+    this.room?.send(Message.CLAIM_DESK, { deskId, deskName })
+  }
+
+  releaseDesk() {
+    this.room?.send(Message.RELEASE_DESK, {})
+  }
+
+  setHandRaised(raised: boolean) {
+    this.room?.send(Message.SET_HAND_RAISED, { raised })
+  }
+
+  setScreenSharing(sharing: boolean) {
+    this.room?.send(Message.SET_SCREEN_SHARING, { sharing })
+  }
+
+  setInMeeting(inMeeting: boolean) {
+    this.room?.send(Message.SET_IN_MEETING, { inMeeting })
+  }
+
   // method to send ready-to-connect signal to Colyseus server
   readyToConnect() {
     this.room?.send(Message.READY_TO_CONNECT)
@@ -279,7 +506,11 @@ export default class Network {
     this.room?.send(Message.STOP_SCREEN_SHARE, { computerId: id })
   }
 
-  addChatMessage(content: string) {
-    this.room?.send(Message.ADD_CHAT_MESSAGE, { content: content })
+  addChatMessage(content: string, recipientId?: string) {
+    if (recipientId) {
+      this.room?.send(Message.ADD_DM_MESSAGE, { content, recipientId })
+    } else {
+      this.room?.send(Message.ADD_CHAT_MESSAGE, { content })
+    }
   }
 }

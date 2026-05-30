@@ -160,10 +160,11 @@ export default function HelperButtonGroup() {
                 <strong>W, A, S, D or arrow keys</strong> to move
               </li>
               <li>
-                <strong>E</strong> to sit down (when facing a chair)
+                Use the bottom bar: <strong>Hand</strong>, <strong>Share</strong>,{' '}
+                <strong>Meet</strong>, <strong>Board</strong>
               </li>
               <li>
-                <strong>R</strong> to use computer to screen share (when facing a computer)
+                Click a name in the member list to <strong>follow</strong> or watch their screen
               </li>
               <li>
                 <strong>Enter</strong> to open chat
@@ -174,7 +175,7 @@ export default function HelperButtonGroup() {
             </ul>
             <p className="tip">
               <LightbulbIcon />
-              Video connection will start if you are close to someone else
+              Video starts when you are close to someone; private rooms keep audio inside the zone
             </p>
           </Wrapper>
         )}

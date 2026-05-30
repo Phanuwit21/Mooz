@@ -9,7 +9,11 @@ import ComputerDialog from './components/ComputerDialog'
 import WhiteboardDialog from './components/WhiteboardDialog'
 import VideoConnectionDialog from './components/VideoConnectionDialog'
 import Chat from './components/Chat'
-import HelperButtonGroup from './components/HelperButtonGroup'
+import ParticipantList from './components/ParticipantList'
+import GameControls from './components/GameControls'
+import MediaControlBar from './components/MediaControlBar'
+import ProximitySharePanel from './components/ProximitySharePanel'
+import ScreenShareViewer from './components/ScreenShareViewer'
 import MobileVirtualJoystick from './components/MobileVirtualJoystick'
 
 const Backdrop = styled.div`
@@ -38,7 +42,11 @@ function App() {
         /* Render Chat or VideoConnectionDialog if no dialogs are opened. */
         <>
           <Chat />
-          {/* Render VideoConnectionDialog if user is not connected to a webcam. */}
+          <ParticipantList />
+          <GameControls />
+          <MediaControlBar />
+          <ProximitySharePanel />
+          <ScreenShareViewer />
           {!videoConnected && <VideoConnectionDialog />}
           <MobileVirtualJoystick />
         </>
@@ -55,8 +63,6 @@ function App() {
   return (
     <Backdrop>
       {ui}
-      {/* Render HelperButtonGroup if no dialogs are opened. */}
-      {!computerDialogOpen && !whiteboardDialogOpen && <HelperButtonGroup />}
     </Backdrop>
   )
 }

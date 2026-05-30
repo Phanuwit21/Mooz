@@ -2,16 +2,10 @@ import React, { useState } from 'react'
 import logo from '../images/logo.png'
 import styled from 'styled-components'
 import Button from '@mui/material/Button'
-import IconButton from '@mui/material/IconButton'
-import Tooltip from '@mui/material/Tooltip'
 import LinearProgress from '@mui/material/LinearProgress'
 import Alert from '@mui/material/Alert'
 import Snackbar from '@mui/material/Snackbar'
-import HelpOutlineIcon from '@mui/icons-material/HelpOutline'
-import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 
-import { CustomRoomTable } from './CustomRoomTable'
-import { CreateRoomForm } from './CreateRoomForm'
 import { useAppSelector } from '../hooks'
 
 import phaserGame from '../PhaserGame'
@@ -33,38 +27,6 @@ const Wrapper = styled.div`
   border-radius: 16px;
   padding: 36px 60px;
   box-shadow: 0px 0px 5px #0000006f;
-`
-
-const CustomRoomWrapper = styled.div`
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  align-items: center;
-  justify-content: center;
-
-  .tip {
-    font-size: 18px;
-  }
-`
-
-const TitleWrapper = styled.div`
-  display: grid;
-  width: 100%;
-
-  .back-button {
-    grid-column: 1;
-    grid-row: 1;
-    justify-self: start;
-    align-self: center;
-  }
-
-  h1 {
-    grid-column: 1;
-    grid-row: 1;
-    justify-self: center;
-    align-self: center;
-  }
 `
 
 const Title = styled.h1`
@@ -102,10 +64,9 @@ const ProgressBar = styled(LinearProgress)`
 `
 
 export default function RoomSelectionDialog() {
-  const [showCustomRoom, setShowCustomRoom] = useState(false)
-  const [showCreateRoomForm, setShowCreateRoomForm] = useState(false)
   const [showSnackbar, setShowSnackbar] = useState(false)
   const lobbyJoined = useAppSelector((state) => state.room.lobbyJoined)
+  const lobbyError = useAppSelector((state) => state.room.lobbyError)
 
   const handleConnect = () => {
     if (lobbyJoined) {
@@ -132,7 +93,6 @@ export default function RoomSelectionDialog() {
         <Alert
           severity="error"
           variant="outlined"
-          // overwrites the dark theme on render
           style={{ background: '#fdeded', color: '#7d4747' }}
         >
           Trying to connect to server, please try again!
@@ -140,66 +100,38 @@ export default function RoomSelectionDialog() {
       </Snackbar>
       <Backdrop>
         <Wrapper>
-          {showCreateRoomForm ? (
-            <CustomRoomWrapper>
-              <TitleWrapper>
-                <IconButton className="back-button" onClick={() => setShowCreateRoomForm(false)}>
-                  <ArrowBackIcon />
-                </IconButton>
-                <Title>Create Custom Room</Title>
-              </TitleWrapper>
-              <CreateRoomForm />
-            </CustomRoomWrapper>
-          ) : showCustomRoom ? (
-            <CustomRoomWrapper>
-              <TitleWrapper>
-                <IconButton className="back-button" onClick={() => setShowCustomRoom(false)}>
-                  <ArrowBackIcon />
-                </IconButton>
-                <Title>
-                  Custom Rooms
-                  <Tooltip
-                    title="We update the results in realtime, no refresh needed!"
-                    placement="top"
-                  >
-                    <IconButton>
-                      <HelpOutlineIcon className="tip" />
-                    </IconButton>
-                  </Tooltip>
-                </Title>
-              </TitleWrapper>
-              <CustomRoomTable />
-              <Button
-                variant="contained"
-                color="secondary"
-                onClick={() => setShowCreateRoomForm(true)}
-              >
-                Create new room
-              </Button>
-            </CustomRoomWrapper>
-          ) : (
-            <>
-              <Title>Welcome to SkyOffice</Title>
-              <Content>
-                <img src={logo} alt="logo" />
-                <Button variant="contained" color="secondary" onClick={handleConnect}>
-                  Connect to public lobby
-                </Button>
-                <Button
-                  variant="outlined"
-                  color="secondary"
-                  onClick={() => (lobbyJoined ? setShowCustomRoom(true) : setShowSnackbar(true))}
-                >
-                  Create/find custom rooms
-                </Button>
-              </Content>
-            </>
-          )}
+          <Title>Welcome to Mooz</Title>
+          <Content>
+            <img src={logo} alt="Mooz logo" />
+            <Button variant="contained" color="secondary" onClick={handleConnect}>
+              Connect to public lobby
+            </Button>
+          </Content>
         </Wrapper>
         {!lobbyJoined && (
           <ProgressBarWrapper>
-            <h3> Connecting to server...</h3>
-            <ProgressBar color="secondary" />
+            {lobbyError ? (
+              <>
+                <Alert severity="error" style={{ maxWidth: 420 }}>
+                  {lobbyError}
+                </Alert>
+                <Button
+                  variant="contained"
+                  color="secondary"
+                  onClick={() => {
+                    const bootstrap = phaserGame.scene.keys.bootstrap as Bootstrap
+                    bootstrap.network.retryLobbyConnection()
+                  }}
+                >
+                  Retry connection
+                </Button>
+              </>
+            ) : (
+              <>
+                <h3>Connecting to server...</h3>
+                <ProgressBar color="secondary" />
+              </>
+            )}
           </ProgressBarWrapper>
         )}
       </Backdrop>

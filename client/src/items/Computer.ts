@@ -25,14 +25,6 @@ export default class Computer extends Item {
     }
   }
 
-  onOverlapDialog() {
-    if (this.currentUsers.size === 0) {
-      this.setDialogBox('Press R to use computer')
-    } else {
-      this.setDialogBox('Press R join')
-    }
-  }
-
   addCurrentUser(userId: string) {
     if (!this.currentUsers || this.currentUsers.has(userId)) return
     this.currentUsers.add(userId)

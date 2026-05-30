@@ -17,6 +17,7 @@ export const roomSlice = createSlice({
   name: 'room',
   initialState: {
     lobbyJoined: false,
+    lobbyError: '' as string,
     roomJoined: false,
     roomId: '',
     roomName: '',
@@ -26,6 +27,11 @@ export const roomSlice = createSlice({
   reducers: {
     setLobbyJoined: (state, action: PayloadAction<boolean>) => {
       state.lobbyJoined = action.payload
+      if (action.payload) state.lobbyError = ''
+    },
+    setLobbyError: (state, action: PayloadAction<string>) => {
+      state.lobbyError = action.payload
+      state.lobbyJoined = false
     },
     setRoomJoined: (state, action: PayloadAction<boolean>) => {
       state.roomJoined = action.payload
@@ -60,6 +66,7 @@ export const roomSlice = createSlice({
 
 export const {
   setLobbyJoined,
+  setLobbyError,
   setRoomJoined,
   setJoinedRoomData,
   setAvailableRooms,

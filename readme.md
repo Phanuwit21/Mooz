@@ -54,9 +54,9 @@ SkyOffice works on all PC browsers (mobile browsers are currently not supported)
 
 ## Controls
 
-- `W, A, S, D, or arrow keys` to move (video chat will start if you are close to someone else)
-- `E` to sit down
-- `R` to use computer (for screen sharing)
+- `W, A, S, D, or arrow keys` to move (video chat starts when you are close to someone else)
+- Bottom bar: **Hand** (raise hand), **Share** (screen share), **Meet** (meeting mode), **Board** (whiteboard)
+- Member list: click a name to follow; screen icon to watch a share
 - `Enter` to open chat
 - `ESC` to close chat
 

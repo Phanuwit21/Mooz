@@ -27,14 +27,24 @@ export default class Bootstrap extends Phaser.Scene {
     this.load.image('backdrop_night', 'assets/background/backdrop_night.png')
     this.load.image('sun_moon', 'assets/background/sun_moon.png')
 
-    this.load.tilemapTiledJSON('tilemap', 'assets/map/map.json')
-    this.load.spritesheet('tiles_wall', 'assets/map/FloorAndGround.png', {
+    this.load.tilemapTiledJSON('tilemap', 'assets/map/Maps.json')
+    // Tilemaps need full images (not spritesheets) so Phaser slices tiles correctly.
+    this.load.image('tiles_wall', 'assets/map/FloorAndGround.png')
+    this.load.image('chair', 'assets/map/chair.png')
+    this.load.image('Modern_Office_Black_Shadow', 'assets/map/Modern_Office_Black_Shadow.png')
+    this.load.image('Interiors_free_32x32', 'assets/map/Interiors_free_32x32.png')
+    this.load.image('Basement', 'assets/map/Basement.png')
+    this.load.spritesheet('tileset1', 'assets/map/tileset1.png', {
       frameWidth: 32,
       frameHeight: 32,
     })
-    this.load.spritesheet('chairs', 'assets/items/chair.png', {
+    this.load.spritesheet('tileset5_export', 'assets/map/tileset5_export.png', {
       frameWidth: 32,
-      frameHeight: 64,
+      frameHeight: 32,
+    })
+    this.load.spritesheet('Room_Builder_free_32x32', 'assets/map/Room_Builder_free_32x32.png', {
+      frameWidth: 32,
+      frameHeight: 32,
     })
     this.load.spritesheet('computers', 'assets/items/computer.png', {
       frameWidth: 96,
@@ -76,6 +86,7 @@ export default class Bootstrap extends Phaser.Scene {
       frameWidth: 32,
       frameHeight: 48,
     })
+    
 
     this.load.on('complete', () => {
       this.preloadComplete = true

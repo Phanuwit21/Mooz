@@ -7,6 +7,14 @@ export interface IPlayer extends Schema {
   anim: string
   readyToConnect: boolean
   videoConnected: boolean
+  presence: string
+  areaId: string
+  areaName: string
+  deskId: string
+  deskName: string
+  handRaised: boolean
+  screenSharing: boolean
+  inMeeting: boolean
 }
 
 export interface IComputer extends Schema {
@@ -20,6 +28,8 @@ export interface IWhiteboard extends Schema {
 
 export interface IChatMessage extends Schema {
   author: string
+  authorId: string
+  recipientId: string
   createdAt: number
   content: string
 }

@@ -4,14 +4,19 @@ import MyPlayer from './MyPlayer'
 import { sittingShiftData } from './Player'
 import WebRTC from '../web/WebRTC'
 import { Event, phaserEvents } from '../events/EventCenter'
+import { PlayerPresence } from '../../../types/PlayerPresence'
+
+export const VIDEO_PROXIMITY_RADIUS = 120
 
 export default class OtherPlayer extends Player {
   private targetPosition: [number, number]
   private lastUpdateTimestamp?: number
-  private connectionBufferTime = 0
-  private connected = false
   private playContainerBody: Phaser.Physics.Arcade.Body
-  private myPlayer?: MyPlayer
+  videoCallConnected = false
+  screenSharing = false
+  inMeeting = false
+  deskId = ''
+  deskName = ''
 
   constructor(
     scene: Phaser.Scene,
@@ -25,32 +30,55 @@ export default class OtherPlayer extends Player {
     super(scene, x, y, texture, id, frame)
     this.targetPosition = [x, y]
 
-    this.playerName.setText(name)
+    this.setPlayerName(name)
     this.playContainerBody = this.playerContainer.body as Phaser.Physics.Arcade.Body
   }
 
-  makeCall(myPlayer: MyPlayer, webRTC: WebRTC) {
-    this.myPlayer = myPlayer
-    const myPlayerId = myPlayer.playerId
+  tryConnect(myPlayer: MyPlayer, webRTC: WebRTC) {
     if (
-      !this.connected &&
-      this.connectionBufferTime >= 750 &&
-      myPlayer.readyToConnect &&
-      this.readyToConnect &&
-      myPlayer.videoConnected &&
-      myPlayerId > this.playerId
+      this.videoCallConnected ||
+      !myPlayer.readyToConnect ||
+      !this.readyToConnect ||
+      !myPlayer.videoConnected ||
+      !this.videoConnected ||
+      myPlayer.playerId <= this.playerId
     ) {
-      webRTC.connectToNewUser(this.playerId)
-      this.connected = true
-      this.connectionBufferTime = 0
+      return
     }
+
+    webRTC.connectToNewUser(this.playerId)
+    this.videoCallConnected = true
+  }
+
+  disconnectVideoCall() {
+    if (!this.videoCallConnected) return
+    this.videoCallConnected = false
+    phaserEvents.emit(Event.PLAYER_DISCONNECTED, this.playerId)
   }
 
   updateOtherPlayer(field: string, value: number | string | boolean) {
     switch (field) {
       case 'name':
         if (typeof value === 'string') {
-          this.playerName.setText(value)
+          this.setPlayerName(value)
+        }
+        break
+
+      case 'presence':
+        if (typeof value === 'string') {
+          this.setPresence(value)
+        }
+        break
+
+      case 'areaId':
+        if (typeof value === 'string') {
+          this.areaId = value
+        }
+        break
+
+      case 'areaName':
+        if (typeof value === 'string') {
+          this.areaName = value
         }
         break
 
@@ -83,6 +111,36 @@ export default class OtherPlayer extends Player {
           this.videoConnected = value
         }
         break
+
+      case 'handRaised':
+        if (typeof value === 'boolean') {
+          this.setHandRaised(value)
+        }
+        break
+
+      case 'screenSharing':
+        if (typeof value === 'boolean') {
+          this.screenSharing = value
+        }
+        break
+
+      case 'inMeeting':
+        if (typeof value === 'boolean') {
+          this.inMeeting = value
+        }
+        break
+
+      case 'deskId':
+        if (typeof value === 'string') {
+          this.deskId = value
+        }
+        break
+
+      case 'deskName':
+        if (typeof value === 'string') {
+          this.deskName = value
+        }
+        break
     }
   }
 
@@ -96,9 +154,7 @@ export default class OtherPlayer extends Player {
   preUpdate(t: number, dt: number) {
     super.preUpdate(t, dt)
 
-    // if Phaser has not updated the canvas (when the game tab is not active) for more than 1 sec
-    // directly snap player to their current locations
-    if (this.lastUpdateTimestamp && t - this.lastUpdateTimestamp > 750) {
+    if (this.lastUpdateTimestamp && t - this.lastUpdateTimestamp > 1200) {
       this.lastUpdateTimestamp = t
       this.x = this.targetPosition[0]
       this.y = this.targetPosition[1]
@@ -108,24 +164,22 @@ export default class OtherPlayer extends Player {
     }
 
     this.lastUpdateTimestamp = t
-    this.setDepth(this.y) // change player.depth based on player.y
+    this.setDepth(this.y)
     const animParts = this.anims.currentAnim.key.split('_')
     const animState = animParts[1]
     if (animState === 'sit') {
       const animDir = animParts[2]
       const sittingShift = sittingShiftData[animDir]
       if (sittingShift) {
-        // set hardcoded depth (differs between directions) if player sits down
         this.setDepth(this.depth + sittingShiftData[animDir][2])
       }
     }
 
-    const speed = 200 // speed is in unit of pixels per second
-    const delta = (speed / 1000) * dt // minimum distance that a player can move in a frame (dt is in unit of ms)
+    const speed = 320
+    const delta = (speed / 1000) * dt
     let dx = this.targetPosition[0] - this.x
     let dy = this.targetPosition[1] - this.y
 
-    // if the player is close enough to the target position, directly snap the player to that position
     if (Math.abs(dx) < delta) {
       this.x = this.targetPosition[0]
       this.playerContainer.x = this.targetPosition[0]
@@ -137,7 +191,6 @@ export default class OtherPlayer extends Player {
       dy = 0
     }
 
-    // if the player is still far from target position, impose a constant velocity towards it
     let vx = 0
     let vy = 0
     if (dx > 0) vx += speed
@@ -145,27 +198,10 @@ export default class OtherPlayer extends Player {
     if (dy > 0) vy += speed
     else if (dy < 0) vy -= speed
 
-    // update character velocity
     this.setVelocity(vx, vy)
     this.body.velocity.setLength(speed)
-    // also update playerNameContainer velocity
     this.playContainerBody.setVelocity(vx, vy)
     this.playContainerBody.velocity.setLength(speed)
-
-    // while currently connected with myPlayer
-    // if myPlayer and the otherPlayer stop overlapping, delete video stream
-    this.connectionBufferTime += dt
-    if (
-      this.connected &&
-      !this.body.embedded &&
-      this.body.touching.none &&
-      this.connectionBufferTime >= 750
-    ) {
-      if (this.x < 610 && this.y > 515 && this.myPlayer!.x < 610 && this.myPlayer!.y > 515) return
-      phaserEvents.emit(Event.PLAYER_DISCONNECTED, this.playerId)
-      this.connectionBufferTime = 0
-      this.connected = false
-    }
   }
 }
 

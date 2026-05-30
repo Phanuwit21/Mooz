@@ -1,5 +1,6 @@
 import { ItemType } from '../../../types/Items'
 import store from '../stores'
+import { sanitizeId } from '../util'
 import Item from './Item'
 import Network from '../services/Network'
 import { openWhiteboardDialog } from '../stores/WhiteboardStore'
@@ -16,20 +17,20 @@ export default class Whiteboard extends Item {
 
   private updateStatus() {
     if (!this.currentUsers) return
-    const numberOfUsers = this.currentUsers.size
-    this.clearStatusBox()
-    if (numberOfUsers === 1) {
-      this.setStatusBox(`${numberOfUsers} user`)
-    } else if (numberOfUsers > 1) {
-      this.setStatusBox(`${numberOfUsers} users`)
-    }
-  }
+    const names = Array.from(this.currentUsers).map((userId) => {
+      const participant = store.getState().participants.participants.get(userId)
+      if (participant?.name) return participant.name
+      return store.getState().user.playerNameMap.get(sanitizeId(userId)) ?? 'Guest'
+    })
 
-  onOverlapDialog() {
-    if (this.currentUsers.size === 0) {
-      this.setDialogBox('Press R to use whiteboard')
+    this.clearStatusBox()
+    if (names.length === 0) return
+    if (names.length === 1) {
+      this.setStatusBox(names[0])
+    } else if (names.length === 2) {
+      this.setStatusBox(names.join(', '))
     } else {
-      this.setDialogBox('Press R join')
+      this.setStatusBox(`${names.length} users`)
     }
   }
 

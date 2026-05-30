@@ -2,6 +2,7 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 
 import phaserGame from '../PhaserGame'
 import Game from '../scenes/Game'
+import { buildWhiteboardUrl } from '../util/whiteboard'
 
 interface WhiteboardState {
   whiteboardDialogOpen: boolean
@@ -24,9 +25,14 @@ export const whiteboardSlice = createSlice({
     openWhiteboardDialog: (state, action: PayloadAction<string>) => {
       state.whiteboardDialogOpen = true
       state.whiteboardId = action.payload
-      const url = state.urls.get(action.payload)
-      if (url) state.whiteboardUrl = url
       const game = phaserGame.scene.keys.game as Game
+      const whiteboard = game.network?.room?.state?.whiteboards?.get(action.payload)
+      const playerName = game.myPlayer?.playerName?.text
+      if (whiteboard?.roomId) {
+        state.whiteboardUrl = buildWhiteboardUrl(whiteboard.roomId, playerName)
+      } else {
+        state.whiteboardUrl = state.urls.get(action.payload) ?? null
+      }
       game.disableKeys()
     },
     closeWhiteboardDialog: (state) => {
@@ -38,10 +44,16 @@ export const whiteboardSlice = createSlice({
       state.whiteboardUrl = null
     },
     setWhiteboardUrls: (state, action: PayloadAction<{ whiteboardId: string; roomId: string }>) => {
-      state.urls.set(
-        action.payload.whiteboardId,
-        `https://wbo.ophir.dev/boards/sky-office-${action.payload.roomId}`
-      )
+      const game = phaserGame.scene.keys.game as Game | undefined
+      const playerName = game?.myPlayer?.playerName?.text
+      const url = buildWhiteboardUrl(action.payload.roomId, playerName)
+      state.urls.set(action.payload.whiteboardId, url)
+      if (
+        state.whiteboardDialogOpen &&
+        state.whiteboardId === action.payload.whiteboardId
+      ) {
+        state.whiteboardUrl = url
+      }
     },
   },
 })

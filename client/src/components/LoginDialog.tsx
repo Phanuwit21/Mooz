@@ -157,10 +157,16 @@ export default function LoginDialog() {
       setNameFieldEmpty(true)
     } else if (roomJoined) {
       console.log('Join! Name:', name, 'Avatar:', avatars[avatarIndex].name)
+      if (!game?.myPlayer) {
+        console.error('Game scene is not ready yet. Wait for the map to finish loading.')
+        return
+      }
       game.registerKeys()
       game.myPlayer.setPlayerName(name)
       game.myPlayer.setPlayerTexture(avatars[avatarIndex].name)
+      game.myPlayer.syncParticipantList(game.network)
       game.network.readyToConnect()
+      game.network.syncPlayersToScene()
       dispatch(setLoggedIn(true))
     }
   }

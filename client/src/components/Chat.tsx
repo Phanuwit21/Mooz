@@ -16,7 +16,9 @@ import Game from '../scenes/Game'
 
 import { getColorByString } from '../util'
 import { useAppDispatch, useAppSelector } from '../hooks'
-import { MessageType, setFocused, setShowChat } from '../stores/ChatStore'
+import Select from '@mui/material/Select'
+import MenuItem from '@mui/material/MenuItem'
+import { MessageType, setFocused, setShowChat, setChatTarget } from '../stores/ChatStore'
 
 const Backdrop = styled.div`
   position: fixed;
@@ -42,21 +44,39 @@ const FabWrapper = styled.div`
 
 const ChatHeader = styled.div`
   position: relative;
-  height: 35px;
+  min-height: 35px;
   background: #000000a7;
   border-radius: 10px 10px 0px 0px;
+  padding: 4px 36px 4px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 
   h3 {
     color: #fff;
-    margin: 7px;
-    font-size: 17px;
+    margin: 0;
+    font-size: 15px;
     text-align: center;
+    flex: 1;
   }
 
   .close {
     position: absolute;
     top: 0;
     right: 0;
+  }
+
+  .target-select {
+    min-width: 140px;
+    color: #fff;
+    font-size: 13px;
+
+    .MuiOutlinedInput-notchedOutline {
+      border-color: rgba(255, 255, 255, 0.25);
+    }
+    .MuiSvgIcon-root {
+      color: #fff;
+    }
   }
 `
 
@@ -142,7 +162,8 @@ const Message = ({ chatMessage, messageType }) => {
         placement="right"
         arrow
       >
-        {messageType === MessageType.REGULAR_MESSAGE ? (
+        {messageType === MessageType.REGULAR_MESSAGE ||
+        messageType === MessageType.DM_MESSAGE ? (
           <p
             style={{
               color: getColorByString(chatMessage.author),
@@ -167,10 +188,52 @@ export default function Chat() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const chatMessages = useAppSelector((state) => state.chat.chatMessages)
+  const dmMessages = useAppSelector((state) => state.chat.dmMessages)
+  const chatTarget = useAppSelector((state) => state.chat.chatTarget)
+  const sessionId = useAppSelector((state) => state.user.sessionId)
+  const playerNameMap = useAppSelector((state) => state.user.playerNameMap)
   const focused = useAppSelector((state) => state.chat.focused)
   const showChat = useAppSelector((state) => state.chat.showChat)
   const dispatch = useAppDispatch()
   const game = phaserGame.scene.keys.game as Game
+
+  const participantOptions = React.useMemo(() => {
+    const options: { id: string; name: string }[] = []
+    playerNameMap.forEach((name, id) => {
+      if (id !== sessionId && name) {
+        options.push({ id, name })
+      }
+    })
+    return options.sort((a, b) => a.name.localeCompare(b.name))
+  }, [playerNameMap, sessionId])
+
+  const visibleMessages = React.useMemo(() => {
+    if (chatTarget === 'everyone') {
+      return chatMessages
+    }
+    const dmForThread = dmMessages
+      .filter(
+        (m) =>
+          (m.authorId === sessionId && m.recipientId === chatTarget) ||
+          (m.authorId === chatTarget && m.recipientId === sessionId)
+      )
+      .map((m) => ({
+        messageType: MessageType.DM_MESSAGE,
+        chatMessage: {
+          author: m.author,
+          authorId: m.authorId,
+          recipientId: m.recipientId,
+          content: m.content,
+          createdAt: m.createdAt,
+        },
+      }))
+    return dmForThread
+  }, [chatTarget, chatMessages, dmMessages, sessionId])
+
+  const chatTitle =
+    chatTarget === 'everyone'
+      ? 'Everyone'
+      : `DM · ${playerNameMap.get(chatTarget) ?? 'Player'}`
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setInputValue(event.target.value)
@@ -201,8 +264,13 @@ export default function Chat() {
     const val = inputValue.trim()
     setInputValue('')
     if (val) {
-      game.network.addChatMessage(val)
-      game.myPlayer.updateDialogBubble(val)
+      if (chatTarget === 'everyone') {
+        game.network.addChatMessage(val)
+        game.myPlayer.updateDialogBubble(val)
+      } else {
+        game.network.addChatMessage(val, chatTarget)
+        game.myPlayer.updateDialogBubble(val)
+      }
     }
   }
 
@@ -218,7 +286,7 @@ export default function Chat() {
 
   useEffect(() => {
     scrollToBottom()
-  }, [chatMessages, showChat])
+  }, [visibleMessages, showChat, chatTarget])
 
   return (
     <Backdrop>
@@ -226,7 +294,19 @@ export default function Chat() {
         {showChat ? (
           <>
             <ChatHeader>
-              <h3>Chat</h3>
+              <Select
+                size="small"
+                className="target-select"
+                value={chatTarget}
+                onChange={(e) => dispatch(setChatTarget(e.target.value))}
+              >
+                <MenuItem value="everyone">Everyone</MenuItem>
+                {participantOptions.map((p) => (
+                  <MenuItem key={p.id} value={p.id}>
+                    {p.name}
+                  </MenuItem>
+                ))}
+              </Select>
               <IconButton
                 aria-label="close dialog"
                 className="close"
@@ -237,7 +317,12 @@ export default function Chat() {
               </IconButton>
             </ChatHeader>
             <ChatBox>
-              {chatMessages.map(({ messageType, chatMessage }, index) => (
+              {chatTarget !== 'everyone' && visibleMessages.length === 0 && (
+                <MessageWrapper>
+                  <p className="notification">Private messages with {chatTitle}</p>
+                </MessageWrapper>
+              )}
+              {visibleMessages.map(({ messageType, chatMessage }, index) => (
                 <Message chatMessage={chatMessage} messageType={messageType} key={index} />
               ))}
               <div ref={messagesEndRef} />
@@ -262,7 +347,9 @@ export default function Chat() {
                 inputRef={inputRef}
                 autoFocus={focused}
                 fullWidth
-                placeholder="Press Enter to chat"
+                placeholder={
+                  chatTarget === 'everyone' ? 'Message everyone…' : `Message ${chatTitle.replace('DM · ', '')}…`
+                }
                 value={inputValue}
                 onKeyDown={handleKeyDown}
                 onChange={handleChange}

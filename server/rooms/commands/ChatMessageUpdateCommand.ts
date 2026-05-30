@@ -6,6 +6,7 @@ import { ChatMessage } from '../schema/OfficeState'
 type Payload = {
   client: Client
   content: string
+  recipientId?: string
 }
 
 export default class ChatMessageUpdateCommand extends Command<IOfficeState, Payload> {
@@ -24,6 +25,8 @@ export default class ChatMessageUpdateCommand extends Command<IOfficeState, Payl
 
     const newMessage = new ChatMessage()
     newMessage.author = player.name
+    newMessage.authorId = client.sessionId
+    newMessage.recipientId = data.recipientId ?? ''
     newMessage.content = content
     chatMessages.push(newMessage)
   }
