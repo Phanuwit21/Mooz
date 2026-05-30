@@ -1,8 +1,11 @@
-[build]  
-  command = "cd types && yarn && cd ../client && yarn && yarn build"
-  publish = "client/dist"
+[build]
+  base = "client"
+  command = "yarn && yarn build"
+  publish = "dist"
 
-# Rule for router history mode
+[build.environment]
+  NODE_VERSION = "18"
+
 [[redirects]]
   from = "/*"
   to = "/index.html"
